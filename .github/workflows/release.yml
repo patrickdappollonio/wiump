@@ -40,10 +40,11 @@ jobs:
             suffix: darwin-x86_64
             archive: tar.gz
             name: x86_64-apple-darwin
-          - target: aarch64-apple-darwin
-            suffix: darwin-amd64
-            archive: tar.gz
-            name: aarch64-apple-darwin
+          # Darwin/arm64 not supported yet on "clap" crate
+          # - target: aarch64-apple-darwin
+          #   suffix: darwin-amd64
+          #   archive: tar.gz
+          #   name: aarch64-apple-darwin
     runs-on: ubuntu-latest
     steps:
       - name: Clone test repository
