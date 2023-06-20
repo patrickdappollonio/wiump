@@ -1,6 +1,5 @@
 use clap::{arg, command, Parser};
 use std::collections::HashMap;
-use std::fmt::Error;
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
@@ -13,9 +12,30 @@ struct PortInfo {
     uid: u32,
     user: String,
     status: String,
-    inode: u32,
     protocol: String,
-    process_name: Option<String>,
+    process: Option<Process>,
+}
+
+impl PortInfo {
+    fn get_process_name(&self) -> String {
+        match &self.process {
+            Some(p) => p.name.to_owned(),
+            None => "(unknown process)".to_string(),
+        }
+    }
+
+    fn get_process_id(&self) -> String {
+        match &self.process {
+            Some(p) => p.pid.to_owned(),
+            None => "".to_string(),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Process {
+    pid: String,
+    name: String,
 }
 
 #[derive(Parser, Debug)]
@@ -45,9 +65,9 @@ fn main() -> std::io::Result<()> {
                 info.uid,
                 info.user,
                 info.status,
-                info.inode,
+                info.get_process_name(),
+                info.get_process_id(),
                 info.protocol,
-                info.process_name.unwrap_or_else(|| "".to_string())
             )?;
         }
 
@@ -62,6 +82,7 @@ fn main() -> std::io::Result<()> {
 
     if port_infos.is_empty() {
         println!("No process is using port {}", args.port);
+        return Ok(());
     }
 
     if port_infos.len() > 1 {
@@ -77,17 +98,22 @@ fn main() -> std::io::Result<()> {
     for info in port_infos {
         let tcpstatus = match info.status.as_str() {
             "" => "".to_string(),
-            _ => format!(" with status {}", info.status),
+            _ => format!("with status {}", info.status),
         };
 
-        let process_name = match info.process_name {
-            Some(name) => name,
-            None => "(unknown process)".to_string(),
+        let pid = match info.get_process_id().as_str() {
+            "" => "".to_string(),
+            _ => format!(" (PID: {})", info.get_process_id()),
         };
 
         println!(
-            "{}Port {}/{} is used by process {}{}",
-            prefix, info.port, info.protocol, process_name, tcpstatus
+            "{}Port {}/{} is used by process {}{} {}",
+            prefix,
+            info.port,
+            info.protocol,
+            info.get_process_name(),
+            pid,
+            tcpstatus
         );
     }
 
@@ -134,7 +160,7 @@ fn get_used_ports() -> std::io::Result<Vec<PortInfo>> {
                 .unwrap_or_else(|| "unknown".to_string());
 
             let inode = inode_str.parse::<u32>().unwrap_or(0);
-            let process_name = get_process_name_by_inode(inode);
+            let process = get_process_by_inode(inode);
 
             let status = if protocol.starts_with("TCP") {
                 tcp_status_map.get(state).unwrap_or(&"UNKNOWN").to_string()
@@ -147,9 +173,8 @@ fn get_used_ports() -> std::io::Result<Vec<PortInfo>> {
                 uid,
                 user,
                 status,
-                inode,
                 protocol: protocol.to_string(),
-                process_name,
+                process,
             };
 
             ports.push(port_info);
@@ -190,7 +215,7 @@ fn get_user_map() -> std::io::Result<HashMap<u32, String>> {
     Ok(user_map)
 }
 
-fn get_process_name_by_inode(inode: u32) -> Option<String> {
+fn get_process_by_inode(inode: u32) -> Option<Process> {
     let proc_path = Path::new("/proc");
     if !proc_path.exists() || !proc_path.is_dir() {
         return None;
@@ -223,11 +248,14 @@ fn get_process_name_by_inode(inode: u32) -> Option<String> {
     None
 }
 
-fn get_process_name(pid_str: &str) -> Option<String> {
+fn get_process_name(pid_str: &str) -> Option<Process> {
     let path = format!("/proc/{}/cmdline", pid_str);
     if let Ok(contents) = fs::read_to_string(&path) {
         let process_name = contents.split('\0').next()?;
-        return Some(process_name.to_string());
+        return Some(Process {
+            name: process_name.to_string(),
+            pid: pid_str.to_string(),
+        });
     }
     None
 }
