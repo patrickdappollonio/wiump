@@ -1,8 +1,11 @@
+use clap::{arg, command, Parser};
 use std::collections::HashMap;
+use std::fmt::Error;
 use std::fs;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
+use tabwriter::TabWriter;
 
 #[derive(Debug)]
 struct PortInfo {
@@ -15,12 +18,80 @@ struct PortInfo {
     process_name: Option<String>,
 }
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[arg(short, long, default_value = "0")]
+    port: usize,
+}
+
 fn main() -> std::io::Result<()> {
+    let args = Args::parse();
     let port_infos = get_used_ports()?;
-    for info in port_infos {
-        println!("{:?}", info);
+
+    if args.port == 0 {
+        let mut writer = TabWriter::new(std::io::stdout());
+        write!(
+            writer,
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+            "PORT", "UID", "USER", "STATUS", "INODE", "PROTOCOL", "PROCESS_NAME"
+        )?;
+
+        for info in port_infos {
+            write!(
+                writer,
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+                info.port,
+                info.uid,
+                info.user,
+                info.status,
+                info.inode,
+                info.protocol,
+                info.process_name.unwrap_or_else(|| "".to_string())
+            )?;
+        }
+
+        writer.flush()?;
+        return Ok(());
     }
-    Ok(())
+
+    let port_infos = port_infos
+        .into_iter()
+        .filter(|info| info.port == args.port as u16)
+        .collect::<Vec<PortInfo>>();
+
+    if port_infos.is_empty() {
+        println!("No process is using port {}", args.port);
+    }
+
+    if port_infos.len() > 1 {
+        println!("More than one process reported using port {}", args.port);
+    }
+
+    let prefix = match port_infos.len() {
+        0 => return Ok(()),
+        1 => "",
+        _ => " - ",
+    };
+
+    for info in port_infos {
+        let tcpstatus = match info.status.as_str() {
+            "" => "".to_string(),
+            _ => format!(" with status {}", info.status),
+        };
+
+        let process_name = match info.process_name {
+            Some(name) => name,
+            None => "(unknown process)".to_string(),
+        };
+
+        println!(
+            "{}Port {}/{} is used by process {}{}",
+            prefix, info.port, info.protocol, process_name, tcpstatus
+        );
+    }
+
+    return Ok(());
 }
 
 fn get_used_ports() -> std::io::Result<Vec<PortInfo>> {
