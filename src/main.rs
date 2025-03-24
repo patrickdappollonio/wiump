@@ -205,7 +205,7 @@ fn main() -> Result<()> {
         }
     } else {
         // Sort tcp_sockets in descending order by port.
-        tcp_sockets.sort_by(|a, b| b.local_port.cmp(&a.local_port));
+        tcp_sockets.sort_by(|a, b| a.local_port.cmp(&b.local_port));
 
         // Print a table of all TCP sockets.
         let mut tw = TabWriter::new(std::io::stdout());
