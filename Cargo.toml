@@ -1,10 +1,21 @@
 [package]
 name = "wiump"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = { version = "4.3.4", features = ["derive"] }
-tabwriter = "1.2.1"
+anyhow = "1.0.97"
+clap = { version = "4.5.32", features = ["derive"] }
+netstat2 = "0.11.1"
+sysinfo = "0.33.1"
+tabwriter = "1.4.1"
+users = "0.11.0"
+
+[profile.release]
+opt-level = "z"   # Optimize for size.
+lto = true        # Enable link time optimization.
+codegen-units = 1 # Reduce parallel code generation units.
+strip = true      # Strip debug symbols.
+panic = "abort"   # Abort on panic.
