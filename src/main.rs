@@ -1,7 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
 use netstat2::*;
-use std::fs;
 use std::io::Write;
 use std::net::IpAddr;
 use sysinfo::{Pid, ProcessesToUpdate, System};
@@ -78,21 +77,23 @@ fn get_sockets(sys: &System, addr: AddressFamilyFlags) -> Vec<SocketInfo> {
     sockets
 }
 
-/// Reads /proc/<pid>/status to extract the UID (Linux-specific).
-fn get_uid_from_pid(pid: u32) -> Option<u32> {
-    let path = format!("/proc/{}/status", pid);
-    let content = fs::read_to_string(path).ok()?;
-    for line in content.lines() {
-        if line.starts_with("Uid:") {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 2 {
-                if let Ok(uid) = parts[1].parse::<u32>() {
-                    return Some(uid);
-                }
-            }
+/// Gets the UID for a given PID using cross-platform sysinfo functionality.
+fn get_uid_from_pid(sys: &System, pid: u32) -> Option<u32> {
+    let pid_obj = Pid::from_u32(pid);
+    sys.process(pid_obj).and_then(|process| {
+        // Try to get the user ID from the process
+        // The sysinfo crate provides different methods depending on the platform
+        #[cfg(unix)]
+        {
+            // On Unix-like systems (Linux, macOS, etc.), we can use the user_id method
+            process.user_id().map(|uid| **uid as u32)
         }
-    }
-    None
+        #[cfg(not(unix))]
+        {
+            // On non-Unix systems, fallback to None
+            None
+        }
+    })
 }
 
 /// Command-line arguments.
@@ -170,7 +171,7 @@ fn main() -> Result<()> {
                 };
 
                 let uid_str = if pid != 0 {
-                    if let Some(uid) = get_uid_from_pid(pid) {
+                    if let Some(uid) = get_uid_from_pid(&sys, pid) {
                         uid.to_string()
                     } else {
                         "unknown".to_string()
@@ -230,7 +231,7 @@ fn main() -> Result<()> {
             };
 
             let uid_str = if pid != 0 {
-                if let Some(uid) = get_uid_from_pid(pid) {
+                if let Some(uid) = get_uid_from_pid(&sys, pid) {
                     uid.to_string()
                 } else {
                     "unknown".to_string()
