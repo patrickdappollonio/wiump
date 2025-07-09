@@ -1,5 +1,7 @@
 # wiump - who is using my port?
 
+[![Github Downloads](https://img.shields.io/github/downloads/patrickdappollonio/wiump/total?color=orange&label=github%20downloads)](https://github.com/patrickdappollonio/wiump/releases)
+
 `wiump` is a small app written in Rust to find which process is using a given port. The app scans TCP and UDP ports and returns the process name and PID.
 
 ```bash
