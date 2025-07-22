@@ -1,9 +1,9 @@
 use anyhow::Result;
 use clap::Parser;
 use netstat2::*;
-use std::fs;
 use std::io::Write;
 use std::net::IpAddr;
+use std::path::PathBuf;
 use sysinfo::{Pid, ProcessesToUpdate, System};
 use tabwriter::TabWriter;
 use users::get_user_by_uid;
@@ -12,6 +12,10 @@ use users::get_user_by_uid;
 struct ProcessInfo {
     pid: u32,
     name: String,
+    uid: Option<u32>,
+    cmd: Vec<String>,
+    exe: PathBuf,
+    cwd: PathBuf,
 }
 
 /// Our unified socket structure.
@@ -44,10 +48,29 @@ fn get_sockets(sys: &System, addr: AddressFamilyFlags) -> Vec<SocketInfo> {
             .iter()
             .map(|&pid| {
                 let pid_obj = Pid::from_u32(pid);
-                let name = sys
-                    .process(pid_obj)
-                    .map_or("".to_string(), |p| p.name().to_string_lossy().into_owned());
-                ProcessInfo { pid, name }
+                if let Some(process) = sys.process(pid_obj) {
+                    let name = process.name().to_string_lossy().into_owned();
+                    let uid = process.user_id().map(|uid_ref| **uid_ref);
+                    let cmd = process.cmd().iter()
+                        .map(|s| s.to_string_lossy().into_owned())
+                        .collect();
+                    let exe = process.exe()
+                        .map(|p| p.to_path_buf())
+                        .unwrap_or_else(PathBuf::new);
+                    let cwd = process.cwd()
+                        .map(|p| p.to_path_buf())
+                        .unwrap_or_else(PathBuf::new);
+                    ProcessInfo { pid, name, uid, cmd, exe, cwd }
+                } else {
+                    ProcessInfo {
+                        pid,
+                        name: "unknown".to_string(),
+                        uid: None,
+                        cmd: vec![],
+                        exe: PathBuf::new(),
+                        cwd: PathBuf::new(),
+                    }
+                }
             })
             .collect();
 
@@ -78,21 +101,18 @@ fn get_sockets(sys: &System, addr: AddressFamilyFlags) -> Vec<SocketInfo> {
     sockets
 }
 
-/// Reads /proc/<pid>/status to extract the UID (Linux-specific).
-fn get_uid_from_pid(pid: u32) -> Option<u32> {
-    let path = format!("/proc/{}/status", pid);
-    let content = fs::read_to_string(path).ok()?;
-    for line in content.lines() {
-        if line.starts_with("Uid:") {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 2 {
-                if let Ok(uid) = parts[1].parse::<u32>() {
-                    return Some(uid);
-                }
-            }
-        }
+/// Format command line for display, truncating if too long
+fn format_command_line(cmd: &[String], max_length: usize) -> String {
+    if cmd.is_empty() {
+        return "unknown".to_string();
     }
-    None
+
+    let full_cmd = cmd.join(" ");
+    if full_cmd.len() <= max_length {
+        full_cmd
+    } else {
+        format!("{}...", &full_cmd[..max_length.saturating_sub(3)])
+    }
 }
 
 /// Command-line arguments.
@@ -102,6 +122,10 @@ struct Args {
     /// Port to filter for (if not provided, lists all ports in a table)
     #[arg(short, long)]
     port: Option<u16>,
+
+    /// Show detailed process information in table view
+    #[arg(short, long)]
+    detailed: bool,
 }
 
 fn main() -> Result<()> {
@@ -163,29 +187,27 @@ fn main() -> Result<()> {
                 let state_str = state_to_str(&s.state);
 
                 // Use the first associated process (if any).
-                let (pid, proc_name) = if let Some(proc_info) = s.processes.first() {
-                    (proc_info.pid, proc_info.name.clone())
+                let (pid, proc_name, uid_opt, cmd, exe, cwd) = if let Some(proc_info) = s.processes.first() {
+                    (
+                        proc_info.pid,
+                        proc_info.name.clone(),
+                        proc_info.uid,
+                        &proc_info.cmd,
+                        &proc_info.exe,
+                        &proc_info.cwd
+                    )
                 } else {
-                    (0, "unknown".to_string())
+                    (0, "unknown".to_string(), None, &vec![], &PathBuf::new(), &PathBuf::new())
                 };
 
-                let uid_str = if pid != 0 {
-                    if let Some(uid) = get_uid_from_pid(pid) {
-                        uid.to_string()
-                    } else {
-                        "unknown".to_string()
-                    }
-                } else {
-                    "unknown".to_string()
-                };
+                let uid_str = uid_opt
+                    .map(|uid| uid.to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
 
-                let user = if let Ok(uid_val) = uid_str.parse::<u32>() {
-                    get_user_by_uid(uid_val)
-                        .map(|u| u.name().to_string_lossy().into_owned())
-                        .unwrap_or_else(|| "unknown".to_string())
-                } else {
-                    "unknown".to_string()
-                };
+                let user = uid_opt
+                    .and_then(|uid| get_user_by_uid(uid))
+                    .map(|u| u.name().to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "unknown".to_string());
 
                 let local = format!("{}:{}", s.local_addr, s.local_port);
                 let remote = if let (Some(raddr), Some(rport)) = (s.remote_addr, s.remote_port) {
@@ -199,6 +221,18 @@ fn main() -> Result<()> {
                 println!("  Remote Address: {}", remote);
                 println!("  State: {}", state_str);
                 println!("  Process: {} (PID: {})", proc_name, pid);
+
+                // Show detailed process information
+                if !cmd.is_empty() {
+                    println!("  Command: {}", cmd.join(" "));
+                }
+                if !exe.as_os_str().is_empty() {
+                    println!("  Executable: {}", exe.display());
+                }
+                if !cwd.as_os_str().is_empty() {
+                    println!("  Working Directory: {}", cwd.display());
+                }
+
                 println!("  UID: {} (User: {})", uid_str, user);
                 println!();
             }
@@ -209,57 +243,97 @@ fn main() -> Result<()> {
 
         // Print a table of all TCP sockets.
         let mut tw = TabWriter::new(std::io::stdout());
-        // Header: PORT, UID, USER, STATUS, PROTOCOL, PROCESS_NAME, LOCAL, REMOTE
-        writeln!(
-            tw,
-            "PORT\tUID\tUSER\tSTATUS\tPROTOCOL\tPROCESS_NAME\tLOCAL\tREMOTE"
-        )
-        .unwrap();
-        for s in tcp_sockets {
-            let proto_str = match s.family {
-                AddressFamilyFlags::IPV4 => "TCP",
-                AddressFamilyFlags::IPV6 => "TCP6",
-                _ => "TCP",
-            };
-            let state_str = state_to_str(&s.state);
 
-            let (pid, proc_name) = if let Some(proc_info) = s.processes.first() {
-                (proc_info.pid, proc_info.name.clone())
-            } else {
-                (0, "unknown".to_string())
-            };
-
-            let uid_str = if pid != 0 {
-                if let Some(uid) = get_uid_from_pid(pid) {
-                    uid.to_string()
-                } else {
-                    "unknown".to_string()
-                }
-            } else {
-                "unknown".to_string()
-            };
-
-            let user = if let Ok(uid_val) = uid_str.parse::<u32>() {
-                get_user_by_uid(uid_val)
-                    .map(|u| u.name().to_string_lossy().into_owned())
-                    .unwrap_or_else(|| "unknown".to_string())
-            } else {
-                "unknown".to_string()
-            };
-
-            let local = format!("{}:{}", s.local_addr, s.local_port);
-            let remote = if let (Some(raddr), Some(rport)) = (s.remote_addr, s.remote_port) {
-                format!("{}:{}", raddr, rport)
-            } else {
-                "-".to_string()
-            };
-
+        if args.detailed {
+            // Header with detailed information
             writeln!(
                 tw,
-                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-                s.local_port, uid_str, user, state_str, proto_str, proc_name, local, remote
+                "PORT\tUID\tUSER\tSTATUS\tPROTOCOL\tPROCESS_NAME\tCOMMAND\tLOCAL\tREMOTE"
             )
             .unwrap();
+            for s in tcp_sockets {
+                let proto_str = match s.family {
+                    AddressFamilyFlags::IPV4 => "TCP",
+                    AddressFamilyFlags::IPV6 => "TCP6",
+                    _ => "TCP",
+                };
+                let state_str = state_to_str(&s.state);
+
+                let (_pid, proc_name, uid_opt, cmd) = if let Some(proc_info) = s.processes.first() {
+                    (proc_info.pid, proc_info.name.clone(), proc_info.uid, &proc_info.cmd)
+                } else {
+                    (0, "unknown".to_string(), None, &vec![])
+                };
+
+                let uid_str = uid_opt
+                    .map(|uid| uid.to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
+
+                let user = uid_opt
+                    .and_then(|uid| get_user_by_uid(uid))
+                    .map(|u| u.name().to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "unknown".to_string());
+
+                let local = format!("{}:{}", s.local_addr, s.local_port);
+                let remote = if let (Some(raddr), Some(rport)) = (s.remote_addr, s.remote_port) {
+                    format!("{}:{}", raddr, rport)
+                } else {
+                    "-".to_string()
+                };
+
+                let command_display = format_command_line(cmd, 40);
+
+                writeln!(
+                    tw,
+                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                    s.local_port, uid_str, user, state_str, proto_str, proc_name, command_display, local, remote
+                )
+                .unwrap();
+            }
+        } else {
+            // Header: PORT, UID, USER, STATUS, PROTOCOL, PROCESS_NAME, LOCAL, REMOTE
+            writeln!(
+                tw,
+                "PORT\tUID\tUSER\tSTATUS\tPROTOCOL\tPROCESS_NAME\tLOCAL\tREMOTE"
+            )
+            .unwrap();
+            for s in tcp_sockets {
+                let proto_str = match s.family {
+                    AddressFamilyFlags::IPV4 => "TCP",
+                    AddressFamilyFlags::IPV6 => "TCP6",
+                    _ => "TCP",
+                };
+                let state_str = state_to_str(&s.state);
+
+                let (_pid, proc_name, uid_opt) = if let Some(proc_info) = s.processes.first() {
+                    (proc_info.pid, proc_info.name.clone(), proc_info.uid)
+                } else {
+                    (0, "unknown".to_string(), None)
+                };
+
+                let uid_str = uid_opt
+                    .map(|uid| uid.to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
+
+                let user = uid_opt
+                    .and_then(|uid| get_user_by_uid(uid))
+                    .map(|u| u.name().to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "unknown".to_string());
+
+                let local = format!("{}:{}", s.local_addr, s.local_port);
+                let remote = if let (Some(raddr), Some(rport)) = (s.remote_addr, s.remote_port) {
+                    format!("{}:{}", raddr, rport)
+                } else {
+                    "-".to_string()
+                };
+
+                writeln!(
+                    tw,
+                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                    s.local_port, uid_str, user, state_str, proto_str, proc_name, local, remote
+                )
+                .unwrap();
+            }
         }
         tw.flush().unwrap();
     }
