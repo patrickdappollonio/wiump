@@ -49,10 +49,3 @@ Port 53/TCP:
 ```
 
 Seeing `(unknown)` means your user isn't privileged enough to see the process name or one hasn't been reported or we couldn't map the PID to another application except the kernel. You can run `wiump` with `sudo` to get the process name if one should exist and is available to `root`.
-
-> [!WARNING]
-> Not all features are available on macOS. This application is more Linux friendly.
-
-**Learning experience**
-
-This app was made as a way to learn about Rust and how to use it to build a CLI app. There might be bugs or non-idiomatic ways of doing things. If so, please do let me know! I'm available on Twitter, Mastodon, BlueSky and a few other places. My profile contains all the links.
