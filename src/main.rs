@@ -268,7 +268,12 @@ fn main() -> Result<()> {
                     println!("  Working Directory: {}", cwd.display());
                 }
 
-                println!("  UID: {uid_str} (User: {user})");
+                let display_user = if pid == 0 && user == "unknown" {
+                    "unknown, likely \"kernel\""
+                } else {
+                    &user
+                };
+                println!("  UID: {uid_str} (User: {display_user})");
                 println!();
             }
         }
