@@ -4,6 +4,24 @@
 
 `wiump` is a small app written in Rust to find which process is using a given port. The app scans TCP and UDP ports and returns the process name and PID.
 
+### Installation
+
+#### Precompiled Binaries
+
+Download the latest precompiled binary for your platform from the [releases page](https://github.com/patrickdappollonio/wiump/releases).
+
+#### Homebrew (macOS and Linux)
+
+Simply install the `wiump` formula by tapping my personal tap:
+
+```bash
+brew install patrickdappollonio/tap/wiump
+```
+
+### Usage
+
+`wiump` will scan all ports and display a table of all the ports and their associated processes. Here's an example of the output:
+
 ```bash
 $ wiump
 PORT   PID     UID      USER            STATUS       PROTOCOL  PROCESS_NAME     LOCAL                 REMOTE
