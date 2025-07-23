@@ -72,10 +72,11 @@ fn get_sockets(sys: &System, addr: AddressFamilyFlags) -> Result<Vec<SocketInfo>
                         cwd,
                     }
                 } else {
+                    let name = "unknown".to_string();
                     ProcessInfo {
                         pid,
                         uid: None,
-                        name: "unknown".to_string(),
+                        name,
                         cmd: Vec::new(),
                         exe: PathBuf::new(),
                         cwd: PathBuf::new(),
@@ -249,7 +250,12 @@ fn main() -> Result<()> {
                 println!("  Local Address: {local}");
                 println!("  Remote Address: {remote}");
                 println!("  State: {state_str}");
-                println!("  Process: {proc_name} (PID: {pid})");
+                let display_name = if pid == 0 && proc_name == "unknown" {
+                    "unknown, likely a \"kernel\" process"
+                } else {
+                    &proc_name
+                };
+                println!("  Process: {display_name} (PID: {pid})");
 
                 // Show detailed process information
                 if !cmd.is_empty() {
