@@ -277,14 +277,14 @@ fn main() -> Result<()> {
             // Header with detailed information
             writeln!(
                 tw,
-                "PORT\tUID\tUSER\tSTATUS\tPROTOCOL\tPROCESS_NAME\tCOMMAND\tLOCAL\tREMOTE"
+                "PORT\tPID\tUID\tUSER\tSTATUS\tPROTOCOL\tPROCESS_NAME\tCOMMAND\tLOCAL\tREMOTE"
             )
             .map_err(|e| anyhow::anyhow!("Failed to write to output: {}", e))?;
             for s in tcp_sockets {
                 let proto_str = get_protocol_string(s.family);
                 let state_str = tcp_state_to_str(&s.state);
 
-                let (_pid, proc_name, uid_opt, cmd) = if let Some(proc_info) = s.processes.first() {
+                let (pid, proc_name, uid_opt, cmd) = if let Some(proc_info) = s.processes.first() {
                     (
                         proc_info.pid,
                         proc_info.name.clone(),
@@ -304,8 +304,9 @@ fn main() -> Result<()> {
 
                 writeln!(
                     tw,
-                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
                     s.local_port,
+                    pid,
                     uid_str,
                     user,
                     state_str,
@@ -318,17 +319,17 @@ fn main() -> Result<()> {
                 .map_err(|e| anyhow::anyhow!("Failed to write to output: {}", e))?;
             }
         } else {
-            // Header: PORT, UID, USER, STATUS, PROTOCOL, PROCESS_NAME, LOCAL, REMOTE
+            // Header: PORT, PID, UID, USER, STATUS, PROTOCOL, PROCESS_NAME, LOCAL, REMOTE
             writeln!(
                 tw,
-                "PORT\tUID\tUSER\tSTATUS\tPROTOCOL\tPROCESS_NAME\tLOCAL\tREMOTE"
+                "PORT\tPID\tUID\tUSER\tSTATUS\tPROTOCOL\tPROCESS_NAME\tLOCAL\tREMOTE"
             )
             .map_err(|e| anyhow::anyhow!("Failed to write to output: {}", e))?;
             for s in tcp_sockets {
                 let proto_str = get_protocol_string(s.family);
                 let state_str = tcp_state_to_str(&s.state);
 
-                let (_pid, proc_name, uid_opt) = if let Some(proc_info) = s.processes.first() {
+                let (pid, proc_name, uid_opt) = if let Some(proc_info) = s.processes.first() {
                     (proc_info.pid, proc_info.name.clone(), proc_info.uid)
                 } else {
                     (0, "unknown".to_string(), None)
@@ -341,8 +342,8 @@ fn main() -> Result<()> {
 
                 writeln!(
                     tw,
-                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-                    s.local_port, uid_str, user, state_str, proto_str, proc_name, local, remote
+                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                    s.local_port, pid, uid_str, user, state_str, proto_str, proc_name, local, remote
                 )
                 .map_err(|e| anyhow::anyhow!("Failed to write to output: {}", e))?;
             }
