@@ -4,29 +4,49 @@
 
 `wiump` is a small app written in Rust to find which process is using a given port. The app scans TCP and UDP ports and returns the process name and PID.
 
+### Installation
+
+#### Precompiled Binaries
+
+Download the latest precompiled binary for your platform from the [releases page](https://github.com/patrickdappollonio/wiump/releases).
+
+#### Homebrew (macOS and Linux)
+
+Simply install the `wiump` formula by tapping my personal tap:
+
 ```bash
-$ wiump
-PORT   UID      USER             STATUS       PROTOCOL  PROCESS_NAME     LOCAL                REMOTE
-53     101      systemd-resolve  LISTEN       TCP       systemd-resolve  127.0.0.53:53        0.0.0.0:0
-53     unknown  unknown          LISTEN       TCP       unknown          10.255.255.254:53    0.0.0.0:0
-5000   1000     patrick          LISTEN       TCP6      http-server      :::5000              :::0
-35972  1000     patrick          ESTABLISHED  TCP       node             127.0.0.1:35972      127.0.0.1:39945
-35976  1000     patrick          ESTABLISHED  TCP       node             127.0.0.1:35976      127.0.0.1:39945
-39945  1000     patrick          LISTEN       TCP       node             127.0.0.1:39945      0.0.0.0:0
-39945  1000     patrick          ESTABLISHED  TCP       node             127.0.0.1:39945      127.0.0.1:35972
-39945  1000     patrick          ESTABLISHED  TCP       node             127.0.0.1:39945      127.0.0.1:35976
+brew install patrickdappollonio/tap/wiump
 ```
 
-If provided with a port using `-p` or `--port`, it will display information just for that resource. For example, `wiump -p 5000` will show you that my [`http-server`](https://github.com/patrickdappollonio/http-server) is using that port:
+### Usage
+
+`wiump` will scan all ports and display a table of all the ports and their associated processes. Here's an example of the output:
 
 ```bash
-$ wiump --port 5000
-Port 5000/TCP6:
-  Local Address: :::5000
-  Remote Address: :::0
+$ wiump
+PORT   PID     UID      USER            STATUS       PROTOCOL  PROCESS_NAME     LOCAL                 REMOTE
+53     101     101      systemd-resolve LISTEN       TCP       systemd-resolved 127.0.0.53:53         0.0.0.0:0
+80     1234    1000     webdev          LISTEN       TCP       nginx            0.0.0.0:80            0.0.0.0:0
+443    1234    1000     webdev          LISTEN       TCP       nginx            0.0.0.0:443           0.0.0.0:0
+3000   5678    1000     webdev          LISTEN       TCP       node             127.0.0.1:3000        0.0.0.0:0
+5432   999     999      postgres        LISTEN       TCP       postgres         127.0.0.1:5432        0.0.0.0:0
+8080   9012    1000     webdev          LISTEN       TCP6      java             :::8080               :::0
+22     0       0        root            LISTEN       TCP       sshd             0.0.0.0:22            0.0.0.0:0
+```
+
+If provided with a port using `-p` or `--port`, it will display information just for that resource. For example, `wiump -p 3000` will show you that a `node` process is using that port:
+
+```bash
+$ wiump --port 3000
+Port 3000/TCP:
+  Local Address: 127.0.0.1:3000
+  Remote Address: 0.0.0.0:0
   State: LISTEN
-  Process: http-server (PID: 7386)
-  UID: 1000 (User: patrick)
+  Process: node (PID: 5678)
+  Command: node server.js
+  Executable: /usr/bin/node
+  Working Directory: /home/webdev/myapp
+  UID: 1000 (User: webdev)
 ```
 
 Or, for port 53, you'll get the following (note the use of `sudo` to be able to fetch process names from other users):

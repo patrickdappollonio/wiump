@@ -72,10 +72,11 @@ fn get_sockets(sys: &System, addr: AddressFamilyFlags) -> Result<Vec<SocketInfo>
                         cwd,
                     }
                 } else {
+                    let name = "unknown".to_string();
                     ProcessInfo {
                         pid,
                         uid: None,
-                        name: "unknown".to_string(),
+                        name,
                         cmd: Vec::new(),
                         exe: PathBuf::new(),
                         cwd: PathBuf::new(),
@@ -249,7 +250,12 @@ fn main() -> Result<()> {
                 println!("  Local Address: {local}");
                 println!("  Remote Address: {remote}");
                 println!("  State: {state_str}");
-                println!("  Process: {proc_name} (PID: {pid})");
+                let display_name = if pid == 0 && proc_name == "unknown" {
+                    "unknown, likely a \"kernel\" process"
+                } else {
+                    &proc_name
+                };
+                println!("  Process: {display_name} (PID: {pid})");
 
                 // Show detailed process information
                 if !cmd.is_empty() {
@@ -262,7 +268,12 @@ fn main() -> Result<()> {
                     println!("  Working Directory: {}", cwd.display());
                 }
 
-                println!("  UID: {uid_str} (User: {user})");
+                let display_user = if pid == 0 && user == "unknown" {
+                    "unknown, likely \"kernel\""
+                } else {
+                    &user
+                };
+                println!("  UID: {uid_str} (User: {display_user})");
                 println!();
             }
         }
@@ -277,14 +288,14 @@ fn main() -> Result<()> {
             // Header with detailed information
             writeln!(
                 tw,
-                "PORT\tUID\tUSER\tSTATUS\tPROTOCOL\tPROCESS_NAME\tCOMMAND\tLOCAL\tREMOTE"
+                "PORT\tPID\tUID\tUSER\tSTATUS\tPROTOCOL\tPROCESS_NAME\tCOMMAND\tLOCAL\tREMOTE"
             )
             .map_err(|e| anyhow::anyhow!("Failed to write to output: {}", e))?;
             for s in tcp_sockets {
                 let proto_str = get_protocol_string(s.family);
                 let state_str = tcp_state_to_str(&s.state);
 
-                let (_pid, proc_name, uid_opt, cmd) = if let Some(proc_info) = s.processes.first() {
+                let (pid, proc_name, uid_opt, cmd) = if let Some(proc_info) = s.processes.first() {
                     (
                         proc_info.pid,
                         proc_info.name.clone(),
@@ -304,8 +315,9 @@ fn main() -> Result<()> {
 
                 writeln!(
                     tw,
-                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
                     s.local_port,
+                    pid,
                     uid_str,
                     user,
                     state_str,
@@ -318,17 +330,17 @@ fn main() -> Result<()> {
                 .map_err(|e| anyhow::anyhow!("Failed to write to output: {}", e))?;
             }
         } else {
-            // Header: PORT, UID, USER, STATUS, PROTOCOL, PROCESS_NAME, LOCAL, REMOTE
+            // Header: PORT, PID, UID, USER, STATUS, PROTOCOL, PROCESS_NAME, LOCAL, REMOTE
             writeln!(
                 tw,
-                "PORT\tUID\tUSER\tSTATUS\tPROTOCOL\tPROCESS_NAME\tLOCAL\tREMOTE"
+                "PORT\tPID\tUID\tUSER\tSTATUS\tPROTOCOL\tPROCESS_NAME\tLOCAL\tREMOTE"
             )
             .map_err(|e| anyhow::anyhow!("Failed to write to output: {}", e))?;
             for s in tcp_sockets {
                 let proto_str = get_protocol_string(s.family);
                 let state_str = tcp_state_to_str(&s.state);
 
-                let (_pid, proc_name, uid_opt) = if let Some(proc_info) = s.processes.first() {
+                let (pid, proc_name, uid_opt) = if let Some(proc_info) = s.processes.first() {
                     (proc_info.pid, proc_info.name.clone(), proc_info.uid)
                 } else {
                     (0, "unknown".to_string(), None)
@@ -341,8 +353,8 @@ fn main() -> Result<()> {
 
                 writeln!(
                     tw,
-                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-                    s.local_port, uid_str, user, state_str, proto_str, proc_name, local, remote
+                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                    s.local_port, pid, uid_str, user, state_str, proto_str, proc_name, local, remote
                 )
                 .map_err(|e| anyhow::anyhow!("Failed to write to output: {}", e))?;
             }
